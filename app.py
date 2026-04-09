@@ -3,9 +3,14 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 import pytz
+import time
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Activity Dashboard", layout="wide")
+
+# ================= AUTO REFRESH SAFE METHOD =================
+time.sleep(1)
+st.rerun()
 
 # ================= BACKGROUND =================
 st.markdown("""
@@ -23,9 +28,6 @@ thead tr th {
 }
 </style>
 """, unsafe_allow_html=True)
-
-# ================= AUTO REFRESH =================
-st.autorefresh(interval=60000, key="refresh")  # 60 sec
 
 # ================= GOOGLE SHEET LOAD =================
 sheet_id = "1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8"
