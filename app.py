@@ -2,17 +2,14 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import pytz
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Activity Performance Dashboard", layout="wide")
 
-# ---------------- CUSTOM CSS ----------------
+# ---------------- STYLE ----------------
 st.markdown("""
 <style>
-.main {background-color:#f4f6f9;}
 .stApp {background-color:#f4f6f9;}
-.block-container {padding-top:1rem;}
 h1 {color:#1f4e79;}
 </style>
 """, unsafe_allow_html=True)
@@ -24,21 +21,19 @@ with col1:
     st.title("📊 Activity Performance Dashboard")
 
 with col2:
-    ist = pytz.timezone("Asia/Kolkata")
-    now = datetime.now(ist)
+    now = datetime.now()
     st.markdown(f"### 🕒 {now.strftime('%d-%m-%Y %I:%M:%S %p')}")
 
-# ---------------- GOOGLE SHEET CSV LINK ----------------
+# ---------------- GOOGLE SHEET CSV ----------------
 sheet_url = "https://docs.google.com/spreadsheets/d/1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8/export?format=csv"
 
 @st.cache_data(ttl=60)
 def load_data():
-    df = pd.read_csv(sheet_url)
-    return df
+    return pd.read_csv(sheet_url)
 
 df = load_data()
 
-# ---------------- CHECK BASIC STRUCTURE ----------------
+# ---------------- CHECK STRUCTURE ----------------
 required_cols = ["Activity", "Summary", "Target", "Sample"]
 
 if not all(col in df.columns for col in required_cols):
@@ -61,15 +56,12 @@ df_long = df_long.dropna(subset=["Date"])
 # ---------------- SIDEBAR FILTERS ----------------
 st.sidebar.header("🔎 Filters")
 
-# Activity in original sequence
 activities = df["Activity"].dropna().unique().tolist()
 selected_activity = st.sidebar.selectbox("Select Activity", activities)
 
-# Dependent Summary
 summaries = df[df["Activity"] == selected_activity]["Summary"].dropna().unique().tolist()
 selected_summary = st.sidebar.selectbox("Select Summary", summaries)
 
-# Date Range (Full calendar)
 min_date = df_long["Date"].min()
 max_date = df_long["Date"].max()
 
@@ -93,11 +85,11 @@ filtered_df = df_long[
     (df_long["Date"] <= pd.to_datetime(end_date))
 ]
 
-# ---------------- DISPLAY DATA ----------------
+# ---------------- DATA TABLE ----------------
 st.subheader("📋 Filtered Data")
 st.dataframe(filtered_df, use_container_width=True)
 
-# ---------------- 3D PIE CHART ----------------
+# ---------------- PIE CHART ----------------
 if not filtered_df.empty:
 
     pie_data = filtered_df.groupby("Date")["Value"].count().reset_index()
@@ -106,28 +98,19 @@ if not filtered_df.empty:
         pie_data,
         names=pie_data["Date"].dt.strftime("%d-%m-%Y"),
         values="Value",
-        hole=0.3,
+        hole=0.4,
         color_discrete_sequence=px.colors.qualitative.Bold
     )
 
     fig.update_traces(textposition="inside", textinfo="percent+label")
-    fig.update_layout(title="📊 Date Distribution (3D Style Look)")
+    fig.update_layout(title="📊 Date Distribution")
 
     st.plotly_chart(fig, use_container_width=True)
-
-    # Screenshot Download
-    img_bytes = fig.to_image(format="png")
-    st.download_button(
-        label="📸 Download Chart as PNG",
-        data=img_bytes,
-        file_name="dashboard_chart.png",
-        mime="image/png"
-    )
 
 else:
     st.warning("No data available for selected filters.")
 
-# ---------------- AUTO REFRESH BUTTON ----------------
+# ---------------- REFRESH BUTTON ----------------
 if st.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
