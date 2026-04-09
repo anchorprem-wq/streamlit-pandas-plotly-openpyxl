@@ -5,21 +5,63 @@ from datetime import datetime
 import pytz
 import time
 
-st.set_page_config(page_title="Activity Dashboard", layout="wide")
+st.set_page_config(page_title="Activity Dashboard PRO", layout="wide")
 
-# =========================
-# INDIA TIME (LIVE CLOCK)
-# =========================
+# ==============================
+# AUTO REFRESH (30 sec)
+# ==============================
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+if time.time() - st.session_state.last_refresh > 30:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
+
+# ==============================
+# GRADIENT BACKGROUND + STYLE
+# ==============================
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(135deg, #1f4037, #99f2c8);
+    color: white;
+}
+
+.big-title {
+    font-size:40px;
+    font-weight:bold;
+    animation: fadeIn 2s ease-in;
+}
+
+@keyframes fadeIn {
+    from {opacity: 0;}
+    to {opacity: 1;}
+}
+
+.kpi-card {
+    background: rgba(255,255,255,0.15);
+    padding:20px;
+    border-radius:15px;
+    text-align:center;
+    font-size:20px;
+    font-weight:bold;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ==============================
+# INDIA TIME
+# ==============================
 india = pytz.timezone("Asia/Kolkata")
 now = datetime.now(india)
 
-# =========================
+# ==============================
 # HEADER
-# =========================
+# ==============================
 col1, col2 = st.columns([6,2])
 
 with col1:
-    st.markdown("<h1 style='margin-bottom:0;'>📊 Activity Performance Dashboard</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='big-title'>📊 Activity Performance Dashboard PRO</div>", unsafe_allow_html=True)
 
 with col2:
     st.markdown(f"""
@@ -31,9 +73,9 @@ with col2:
 
 st.markdown("---")
 
-# =========================
+# ==============================
 # GOOGLE SHEET CSV LINK
-# =========================
+# ==============================
 sheet_url = "https://docs.google.com/spreadsheets/d/1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8/export?format=csv"
 
 @st.cache_data(ttl=60)
@@ -42,13 +84,11 @@ def load_data():
     return df
 
 df = load_data()
-
-# =========================
-# DATA CLEANING
-# =========================
 df.columns = df.columns.str.strip()
 
-# Melt date columns
+# ==============================
+# DATA TRANSFORM
+# ==============================
 fixed_cols = ["Activity", "Summary", "Target", "Sample"]
 date_cols = [col for col in df.columns if "/" in col]
 
@@ -62,9 +102,9 @@ df_melt = df.melt(
 df_melt["Date"] = pd.to_datetime(df_melt["Date"], dayfirst=True)
 df_melt["Value"] = df_melt["Value"].astype(str)
 
-# =========================
+# ==============================
 # SIDEBAR FILTERS
-# =========================
+# ==============================
 st.sidebar.header("🔎 Filters")
 
 activity_list = df_melt["Activity"].dropna().unique().tolist()
@@ -78,9 +118,9 @@ max_date = df_melt["Date"].max()
 
 date_range = st.sidebar.date_input("Select Date Range", [min_date, max_date])
 
-# =========================
+# ==============================
 # FILTER DATA
-# =========================
+# ==============================
 filtered = df_melt[
     (df_melt["Activity"] == activity) &
     (df_melt["Summary"] == summary) &
@@ -88,19 +128,41 @@ filtered = df_melt[
     (df_melt["Date"] <= pd.to_datetime(date_range[1]))
 ]
 
-# =========================
-# SHOW TABLE (FULL WIDTH VALUE COLUMN)
-# =========================
+# ==============================
+# KPI CARDS
+# ==============================
+st.subheader("📈 Key Performance Indicators")
+
+col1, col2, col3 = st.columns(3)
+
+total_records = len(filtered)
+unique_dates = filtered["Date"].nunique()
+unique_values = filtered["Value"].nunique()
+
+with col1:
+    st.markdown(f"<div class='kpi-card'>Total Records<br>{total_records}</div>", unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"<div class='kpi-card'>Active Dates<br>{unique_dates}</div>", unsafe_allow_html=True)
+
+with col3:
+    st.markdown(f"<div class='kpi-card'>Unique Values<br>{unique_values}</div>", unsafe_allow_html=True)
+
+st.markdown("---")
+
+# ==============================
+# TABLE VIEW
+# ==============================
 st.subheader("📋 Filtered Data")
 
 if not filtered.empty:
     st.dataframe(filtered, use_container_width=True)
 else:
-    st.warning("No data available for selected filters.")
+    st.warning("No data available.")
 
-# =========================
+# ==============================
 # 3D STYLE PIE CHART
-# =========================
+# ==============================
 st.subheader("📊 3D Pie Chart View")
 
 if not filtered.empty:
