@@ -3,26 +3,12 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import io
 
 st.set_page_config(page_title="Activity Dashboard", layout="wide")
 
-# ---------------------------
-# CUSTOM CSS (Professional UI)
-# ---------------------------
-st.markdown("""
-<style>
-.main {background-color: #f4f6f9;}
-h1 {font-size:38px !important;}
-[data-testid="stDataFrame"] div {
-    font-size:14px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------------------
-# HEADER WITH LIVE IST TIME
-# ---------------------------
+# ------------------------
+# HEADER
+# ------------------------
 col1, col2 = st.columns([3,1])
 
 with col1:
@@ -32,9 +18,9 @@ with col2:
     now = datetime.now(ZoneInfo("Asia/Kolkata"))
     st.markdown(f"### 🕒 {now.strftime('%d-%m-%Y %I:%M:%S %p')}")
 
-# ---------------------------
+# ------------------------
 # LOAD GOOGLE SHEET
-# ---------------------------
+# ------------------------
 @st.cache_data(ttl=60)
 def load_data():
     sheet_id = "1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8"
@@ -44,9 +30,9 @@ def load_data():
 
 df = load_data()
 
-# ---------------------------
-# CLEAN DATA
-# ---------------------------
+# ------------------------
+# DATA CLEAN
+# ------------------------
 fixed_cols = ["Activity", "Summary", "Target", "Sample"]
 date_cols = [col for col in df.columns if col not in fixed_cols]
 
@@ -59,21 +45,17 @@ df_long = df.melt(
 
 df_long["Date"] = pd.to_datetime(df_long["Date"], errors="coerce")
 df_long = df_long.dropna(subset=["Date"])
-
-# Keep value as text (important)
 df_long["Value"] = df_long["Value"].astype(str)
 
-# ---------------------------
+# ------------------------
 # SIDEBAR FILTERS
-# ---------------------------
+# ------------------------
 st.sidebar.header("🔎 Filters")
 
 activities = df["Activity"].dropna().unique().tolist()
 selected_activity = st.sidebar.selectbox("Select Activity", activities)
 
-filtered_summary_df = df[df["Activity"] == selected_activity]
-summaries = filtered_summary_df["Summary"].dropna().unique().tolist()
-
+summaries = df[df["Activity"] == selected_activity]["Summary"].dropna().unique().tolist()
 selected_summary = st.sidebar.selectbox("Select Summary", summaries)
 
 filtered_df = df_long[
@@ -81,17 +63,15 @@ filtered_df = df_long[
     (df_long["Summary"] == selected_summary)
 ]
 
-# ---------------------------
-# DATE RANGE FILTER
-# ---------------------------
+# ------------------------
+# DATE FILTER
+# ------------------------
 min_date = filtered_df["Date"].min()
 max_date = filtered_df["Date"].max()
 
 start_date, end_date = st.sidebar.date_input(
     "Select Date Range",
-    [min_date, max_date],
-    min_value=min_date,
-    max_value=max_date
+    [min_date, max_date]
 )
 
 filtered_df = filtered_df[
@@ -99,23 +79,24 @@ filtered_df = filtered_df[
     (filtered_df["Date"] <= pd.to_datetime(end_date))
 ]
 
-# ---------------------------
-# DISPLAY TABLE (AUTO WIDTH FIX)
-# ---------------------------
+# ------------------------
+# TABLE DISPLAY (FULL WIDTH FIX)
+# ------------------------
 st.subheader("📋 Filtered Data")
 
 display_df = filtered_df.copy()
 display_df["Date"] = display_df["Date"].dt.strftime("%d-%m-%Y")
 
-st.dataframe(
+st.data_editor(
     display_df,
     use_container_width=True,
-    height=350
+    disabled=True,
+    height=400
 )
 
-# ---------------------------
-# 3D STYLE PIE CHART
-# ---------------------------
+# ------------------------
+# PIE CHART
+# ------------------------
 st.subheader("📊 Date Distribution")
 
 if not filtered_df.empty:
@@ -130,20 +111,20 @@ if not filtered_df.empty:
     )
 
     fig.update_traces(textinfo="percent+label")
-    fig.update_layout(
-        height=500
-    )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Screenshot download
-    img_bytes = fig.to_image(format="png")
-    st.download_button(
-        label="📸 Download Chart Screenshot",
-        data=img_bytes,
-        file_name="dashboard_chart.png",
-        mime="image/png"
-    )
+    # Screenshot Button
+    try:
+        img_bytes = fig.to_image(format="png")
+        st.download_button(
+            label="📸 Download Chart Screenshot",
+            data=img_bytes,
+            file_name="dashboard_chart.png",
+            mime="image/png"
+        )
+    except:
+        st.info("Add 'kaleido' in requirements.txt for screenshot feature.")
 
 else:
-    st.warning("No data available for selected filters.")
+    st.warning("No data available.")
