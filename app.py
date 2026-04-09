@@ -1,74 +1,76 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import matplotlib.pyplot as plt
 
-# Page config
-st.set_page_config(page_title="Activity Performance Dashboard PRO", layout="wide")
-st.title("📊 Activity Performance Dashboard PRO")
+st.set_page_config(page_title="Activity Dashboard", layout="wide")
 
-# Load Excel
-try:
-    df = pd.read_excel("activity_data.xlsx", engine="openpyxl")
-    st.success("Loaded file: activity_data.xlsx")
-except Exception as e:
-    st.error(f"Failed to load file: {e}")
-    st.stop()
+st.title("📊 Activity Performance Dashboard")
 
-# Melt date columns
-date_cols = df.columns[4:]  # Assuming first 4 columns: Activity, Summary, Target, Sample
-df_long = df.melt(
-    id_vars=["Activity", "Summary", "Target", "Sample"],
-    value_vars=date_cols,
-    var_name="Date",
-    value_name="Value"
-)
+# -----------------------------
+# 🔹 GOOGLE SHEET CSV LINK DAALO
+# -----------------------------
+sheet_url = "YAHAN_APNA_CSV_LINK_DALO"
 
-# Convert Date to datetime
-df_long["Date"] = pd.to_datetime(df_long["Date"], dayfirst=True, errors="coerce")
+# Data Load Function (Live Update)
+@st.cache_data(ttl=60)
+def load_data():
+    df = pd.read_csv(sheet_url)
+    return df
 
-# Sidebar Filters
-st.sidebar.header("🔎 Filters")
-activities = ["All"] + df_long["Activity"].dropna().astype(str).unique().tolist()
-selected_activity = st.sidebar.selectbox("Select Activity", activities)
+df = load_data()
 
-# Dependent Summary Dropdown
-if selected_activity == "All":
-    summaries = ["All"] + df_long["Summary"].dropna().astype(str).unique().tolist()
-else:
-    summaries = ["All"] + df_long[df_long["Activity"] == selected_activity]["Summary"].dropna().astype(str).unique().tolist()
-selected_summary = st.sidebar.selectbox("Select Summary", summaries)
+# -----------------------------
+# 🔹 DATE COLUMN FORMAT
+# -----------------------------
+if "Date" in df.columns:
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
 
-# Date Picker
-min_date = df_long["Date"].min()
-max_date = df_long["Date"].max()
-start_date, end_date = st.sidebar.date_input(
-    "Select Date Range",
-    [min_date, max_date],
-    min_value=min_date,
-    max_value=max_date
-)
+# -----------------------------
+# 🔹 FILTER SECTION
+# -----------------------------
+st.sidebar.header("🔍 Filter Options")
 
-# Filter DataFrame
-filtered_df = df_long.copy()
-if selected_activity != "All":
-    filtered_df = filtered_df[filtered_df["Activity"] == selected_activity]
-if selected_summary != "All":
-    filtered_df = filtered_df[filtered_df["Summary"] == selected_summary]
-filtered_df = filtered_df[(filtered_df["Date"] >= pd.to_datetime(start_date)) &
-                          (filtered_df["Date"] <= pd.to_datetime(end_date))]
+# Date Filter
+if "Date" in df.columns:
+    min_date = df["Date"].min()
+    max_date = df["Date"].max()
 
-# Show filtered data
-st.dataframe(filtered_df)
-
-# Plot Graph
-if not filtered_df.empty:
-    fig = px.line(
-        filtered_df,
-        x="Date",
-        y="Value",
-        color="Summary" if selected_summary == "All" else "Activity",
-        markers=True
+    start_date, end_date = st.sidebar.date_input(
+        "Select Date Range",
+        [min_date, max_date]
     )
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("No data for selected filters.")
+
+    df = df[(df["Date"] >= pd.to_datetime(start_date)) &
+            (df["Date"] <= pd.to_datetime(end_date))]
+
+# Activity Dropdown (Sorted)
+if "Activity" in df.columns:
+    activity_list = sorted(df["Activity"].dropna().unique())
+    selected_activity = st.sidebar.selectbox(
+        "Select Activity",
+        ["All"] + activity_list
+    )
+
+    if selected_activity != "All":
+        df = df[df["Activity"] == selected_activity]
+
+# -----------------------------
+# 🔹 DATA VIEW
+# -----------------------------
+st.subheader("📄 Data Table")
+st.dataframe(df, use_container_width=True)
+
+# -----------------------------
+# 🔹 SUMMARY SECTION
+# -----------------------------
+if "Summary" in df.columns:
+    st.subheader("📈 Summary Chart")
+
+    summary_data = df["Summary"].value_counts().sort_index()
+
+    fig, ax = plt.subplots()
+    summary_data.plot(kind="bar", ax=ax)
+
+    st.pyplot(fig)
+
+st.success("✅ Data Auto Refresh Every 60 Seconds")
