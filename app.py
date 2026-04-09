@@ -1,88 +1,123 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.express as px
 from datetime import datetime
 import pytz
+import time
 
-# ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Activity Dashboard", layout="wide")
 
-# ---------------- BACKGROUND ----------------
-st.markdown("""
-<style>
-.stApp {
-    background: linear-gradient(135deg, #141E30, #243B55);
-    color: white;
-}
-h1, h2, h3, h4 {
-    color: #FFD700 !important;
-}
-thead tr th {
-    background-color: #FFD700 !important;
-    color: black !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# =========================
+# INDIA TIME (LIVE CLOCK)
+# =========================
+india = pytz.timezone("Asia/Kolkata")
+now = datetime.now(india)
 
-# ---------------- GOOGLE SHEET ----------------
-sheet_id = "1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8"
-sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+# =========================
+# HEADER
+# =========================
+col1, col2 = st.columns([6,2])
+
+with col1:
+    st.markdown("<h1 style='margin-bottom:0;'>📊 Activity Performance Dashboard</h1>", unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"""
+    <div style='text-align:right; font-size:18px;'>
+        🕒 {now.strftime('%d-%m-%Y')} <br>
+        <b>{now.strftime('%I:%M:%S %p')}</b>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# =========================
+# GOOGLE SHEET CSV LINK
+# =========================
+sheet_url = "https://docs.google.com/spreadsheets/d/1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8/export?format=csv"
 
 @st.cache_data(ttl=60)
 def load_data():
-    return pd.read_csv(sheet_url)
+    df = pd.read_csv(sheet_url)
+    return df
 
 df = load_data()
 
-# ---------------- INDIA TIME ----------------
-india = pytz.timezone("Asia/Kolkata")
-current_time = datetime.now(india).strftime("%d-%m-%Y %I:%M:%S %p")
-st.markdown(f"### 🕒 {current_time}")
+# =========================
+# DATA CLEANING
+# =========================
+df.columns = df.columns.str.strip()
 
-# ---------------- DROPDOWNS ----------------
-activities = df["Activity"].dropna().unique()
-selected_activity = st.selectbox("Select Activity", activities)
+# Melt date columns
+fixed_cols = ["Activity", "Summary", "Target", "Sample"]
+date_cols = [col for col in df.columns if "/" in col]
 
-filtered_activity = df[df["Activity"] == selected_activity]
+df_melt = df.melt(
+    id_vars=fixed_cols,
+    value_vars=date_cols,
+    var_name="Date",
+    value_name="Value"
+)
 
-summaries = filtered_activity["Summary"].dropna().unique()
-selected_summary = st.selectbox("Select Summary", summaries)
+df_melt["Date"] = pd.to_datetime(df_melt["Date"], dayfirst=True)
+df_melt["Value"] = df_melt["Value"].astype(str)
 
-filtered_df = filtered_activity[filtered_activity["Summary"] == selected_summary]
+# =========================
+# SIDEBAR FILTERS
+# =========================
+st.sidebar.header("🔎 Filters")
 
-# ---------------- DATE SELECTION ----------------
-date_columns = df.columns[4:]
-selected_date = st.selectbox("Select Date", date_columns)
+activity_list = df_melt["Activity"].dropna().unique().tolist()
+activity = st.sidebar.selectbox("Select Activity", activity_list)
 
-# ---------------- VALUE EXTRACTION ----------------
-filtered_df["Value"] = pd.to_numeric(filtered_df[selected_date], errors="coerce").fillna(0)
+filtered_summary = df_melt[df_melt["Activity"] == activity]["Summary"].dropna().unique().tolist()
+summary = st.sidebar.selectbox("Select Summary", filtered_summary)
 
-# ---------------- TABLE ----------------
+min_date = df_melt["Date"].min()
+max_date = df_melt["Date"].max()
+
+date_range = st.sidebar.date_input("Select Date Range", [min_date, max_date])
+
+# =========================
+# FILTER DATA
+# =========================
+filtered = df_melt[
+    (df_melt["Activity"] == activity) &
+    (df_melt["Summary"] == summary) &
+    (df_melt["Date"] >= pd.to_datetime(date_range[0])) &
+    (df_melt["Date"] <= pd.to_datetime(date_range[1]))
+]
+
+# =========================
+# SHOW TABLE (FULL WIDTH VALUE COLUMN)
+# =========================
 st.subheader("📋 Filtered Data")
 
-display_df = filtered_df[["Activity", "Summary", "Target", "Sample", "Value"]]
-st.dataframe(display_df, use_container_width=True)
+if not filtered.empty:
+    st.dataframe(filtered, use_container_width=True)
+else:
+    st.warning("No data available for selected filters.")
 
-# ---------------- DOWNLOAD BUTTON ----------------
-st.download_button(
-    "⬇ Download Excel",
-    display_df.to_csv(index=False),
-    file_name="filtered_data.csv",
-    mime="text/csv"
-)
-
-# ---------------- PIE CHART ----------------
+# =========================
+# 3D STYLE PIE CHART
+# =========================
 st.subheader("📊 3D Pie Chart View")
 
-fig = go.Figure(data=[go.Pie(
-    labels=filtered_df["Sample"],
-    values=filtered_df["Value"],
-    hole=0.3
-)])
+if not filtered.empty:
 
-fig.update_layout(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)"
-)
+    pie_data = filtered.groupby("Date").size().reset_index(name="Count")
 
-st.plotly_chart(fig, use_container_width=True)
+    fig = px.pie(
+        pie_data,
+        values="Count",
+        names=pie_data["Date"].dt.strftime("%d-%m-%Y"),
+        hole=0.3
+    )
+
+    fig.update_traces(textinfo="percent+label")
+    fig.update_layout(height=500)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+else:
+    st.info("No chart data available.")
