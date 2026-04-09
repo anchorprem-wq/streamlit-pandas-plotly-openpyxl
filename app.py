@@ -3,16 +3,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
 import pytz
-import time
 
-# ================= PAGE CONFIG =================
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Activity Dashboard", layout="wide")
 
-# ================= AUTO REFRESH SAFE METHOD =================
-time.sleep(1)
-st.rerun()
-
-# ================= BACKGROUND =================
+# ---------------- BACKGROUND ----------------
 st.markdown("""
 <style>
 .stApp {
@@ -29,24 +24,22 @@ thead tr th {
 </style>
 """, unsafe_allow_html=True)
 
-# ================= GOOGLE SHEET LOAD =================
+# ---------------- GOOGLE SHEET ----------------
 sheet_id = "1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8"
 sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
 
 @st.cache_data(ttl=60)
 def load_data():
-    df = pd.read_csv(sheet_url)
-    return df
+    return pd.read_csv(sheet_url)
 
 df = load_data()
 
-# ================= INDIA TIME =================
+# ---------------- INDIA TIME ----------------
 india = pytz.timezone("Asia/Kolkata")
 current_time = datetime.now(india).strftime("%d-%m-%Y %I:%M:%S %p")
-
 st.markdown(f"### 🕒 {current_time}")
 
-# ================= DROPDOWNS =================
+# ---------------- DROPDOWNS ----------------
 activities = df["Activity"].dropna().unique()
 selected_activity = st.selectbox("Select Activity", activities)
 
@@ -57,33 +50,28 @@ selected_summary = st.selectbox("Select Summary", summaries)
 
 filtered_df = filtered_activity[filtered_activity["Summary"] == selected_summary]
 
-# ================= DATE COLUMNS =================
+# ---------------- DATE SELECTION ----------------
 date_columns = df.columns[4:]
 selected_date = st.selectbox("Select Date", date_columns)
 
-# ================= VALUE EXTRACTION =================
+# ---------------- VALUE EXTRACTION ----------------
 filtered_df["Value"] = pd.to_numeric(filtered_df[selected_date], errors="coerce").fillna(0)
 
-# ================= DISPLAY TABLE =================
+# ---------------- TABLE ----------------
 st.subheader("📋 Filtered Data")
 
 display_df = filtered_df[["Activity", "Summary", "Target", "Sample", "Value"]]
-
 st.dataframe(display_df, use_container_width=True)
 
-# ================= DOWNLOAD BUTTON =================
-excel_file = "filtered_data.xlsx"
-display_df.to_excel(excel_file, index=False)
+# ---------------- DOWNLOAD BUTTON ----------------
+st.download_button(
+    "⬇ Download Excel",
+    display_df.to_csv(index=False),
+    file_name="filtered_data.csv",
+    mime="text/csv"
+)
 
-with open(excel_file, "rb") as f:
-    st.download_button(
-        label="⬇ Download Excel",
-        data=f,
-        file_name="filtered_data.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-# ================= 3D PIE CHART =================
+# ---------------- PIE CHART ----------------
 st.subheader("📊 3D Pie Chart View")
 
 fig = go.Figure(data=[go.Pie(
