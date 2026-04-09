@@ -4,66 +4,22 @@ import plotly.express as px
 from datetime import datetime
 import pytz
 import time
-from io import BytesIO
 
-st.set_page_config(page_title="Activity Dashboard PRO", layout="wide")
-
-# =========================
-# AUTO REFRESH (30 sec)
-# =========================
-if "refresh" not in st.session_state:
-    st.session_state.refresh = time.time()
-
-if time.time() - st.session_state.refresh > 30:
-    st.session_state.refresh = time.time()
-    st.rerun()
+st.set_page_config(page_title="Activity Dashboard", layout="wide")
 
 # =========================
-# DARK / LIGHT TOGGLE
-# =========================
-theme = st.sidebar.toggle("🌗 Dark Mode", value=True)
-
-if theme:
-    bg_color = "linear-gradient(135deg, #141E30, #243B55)"
-    card_bg = "rgba(255,255,255,0.1)"
-else:
-    bg_color = "linear-gradient(135deg, #f5f7fa, #c3cfe2)"
-    card_bg = "rgba(0,0,0,0.05)"
-
-# =========================
-# CUSTOM CSS
-# =========================
-st.markdown(f"""
-<style>
-.stApp {{
-    background: {bg_color};
-    color: white;
-}}
-
-.big-title {{
-    font-size:38px;
-    font-weight:bold;
-}}
-
-thead tr th {{
-    background-color: #FFD700 !important;
-    color: black !important;
-    font-weight: bold !important;
-}}
-
-</style>
-""", unsafe_allow_html=True)
-
-# =========================
-# INDIA TIME
+# INDIA TIME (LIVE CLOCK)
 # =========================
 india = pytz.timezone("Asia/Kolkata")
 now = datetime.now(india)
 
+# =========================
+# HEADER
+# =========================
 col1, col2 = st.columns([6,2])
 
 with col1:
-    st.markdown("<div class='big-title'>🚀 Activity Performance Dashboard</div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom:0;'>📊 Activity Performance Dashboard</h1>", unsafe_allow_html=True)
 
 with col2:
     st.markdown(f"""
@@ -86,12 +42,13 @@ def load_data():
     return df
 
 df = load_data()
+
+# =========================
+# DATA CLEANING
+# =========================
 df.columns = df.columns.str.strip()
 
-# Remove serial/index column if exists
-if df.columns[0].lower() in ["unnamed: 0", "index", "sr no", "s.no", "serial"]:
-    df = df.iloc[:, 1:]
-
+# Melt date columns
 fixed_cols = ["Activity", "Summary", "Target", "Sample"]
 date_cols = [col for col in df.columns if "/" in col]
 
@@ -106,22 +63,24 @@ df_melt["Date"] = pd.to_datetime(df_melt["Date"], dayfirst=True)
 df_melt["Value"] = df_melt["Value"].astype(str)
 
 # =========================
-# FILTERS
+# SIDEBAR FILTERS
 # =========================
 st.sidebar.header("🔎 Filters")
 
-activity = st.sidebar.selectbox("Select Activity", df_melt["Activity"].dropna().unique())
+activity_list = df_melt["Activity"].dropna().unique().tolist()
+activity = st.sidebar.selectbox("Select Activity", activity_list)
 
-summary = st.sidebar.selectbox(
-    "Select Summary",
-    df_melt[df_melt["Activity"] == activity]["Summary"].dropna().unique()
-)
+filtered_summary = df_melt[df_melt["Activity"] == activity]["Summary"].dropna().unique().tolist()
+summary = st.sidebar.selectbox("Select Summary", filtered_summary)
 
-date_range = st.sidebar.date_input(
-    "Select Date Range",
-    [df_melt["Date"].min(), df_melt["Date"].max()]
-)
+min_date = df_melt["Date"].min()
+max_date = df_melt["Date"].max()
 
+date_range = st.sidebar.date_input("Select Date Range", [min_date, max_date])
+
+# =========================
+# FILTER DATA
+# =========================
 filtered = df_melt[
     (df_melt["Activity"] == activity) &
     (df_melt["Summary"] == summary) &
@@ -129,57 +88,36 @@ filtered = df_melt[
     (df_melt["Date"] <= pd.to_datetime(date_range[1]))
 ]
 
-st.markdown("---")
-
 # =========================
-# DOWNLOAD EXCEL BUTTON
+# SHOW TABLE (FULL WIDTH VALUE COLUMN)
 # =========================
-def to_excel(df):
-    output = BytesIO()
-    df.to_excel(output, index=False)
-    return output.getvalue()
+st.subheader("📋 Filtered Data")
 
 if not filtered.empty:
-    excel_data = to_excel(filtered)
+    st.dataframe(filtered, use_container_width=True)
+else:
+    st.warning("No data available for selected filters.")
 
-    st.download_button(
-        label="⬇ Download Filtered Data (Excel)",
-        data=excel_data,
-        file_name="filtered_data.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+# =========================
+# 3D STYLE PIE CHART
+# =========================
+st.subheader("📊 3D Pie Chart View")
+
+if not filtered.empty:
+
+    pie_data = filtered.groupby("Date").size().reset_index(name="Count")
+
+    fig = px.pie(
+        pie_data,
+        values="Count",
+        names=pie_data["Date"].dt.strftime("%d-%m-%Y"),
+        hole=0.3
     )
 
-st.markdown("---")
+    fig.update_traces(textinfo="percent+label")
+    fig.update_layout(height=500)
 
-# =========================
-# DISTRICT RANKING CHART
-# =========================
-st.subheader("🏆 District Wise Ranking")
-
-if not filtered.empty:
-    ranking = filtered.groupby("Sample").size().reset_index(name="Count")
-
-    fig_bar = px.bar(
-        ranking.sort_values("Count", ascending=False),
-        x="Sample",
-        y="Count",
-        text="Count",
-    )
-
-    fig_bar.update_layout(height=500)
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.info("No data available.")
-
-st.markdown("---")
-
-# =========================
-# DATA TABLE (NO SERIAL NUMBER)
-# =========================
-st.subheader("📋 Detailed Data")
-
-if not filtered.empty:
-    st.dataframe(filtered.reset_index(drop=True), use_container_width=True)
-else:
-    st.warning("No records found.")
+    st.info("No chart data available.")
