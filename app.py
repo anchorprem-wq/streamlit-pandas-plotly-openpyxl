@@ -2,12 +2,39 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import pytz
+import time
 
 st.set_page_config(page_title="Activity Dashboard", layout="wide")
 
-# -------- GOOGLE SHEET CSV LINK --------
-sheet_id = "1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8"
-sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+# =========================
+# INDIA TIME (LIVE CLOCK)
+# =========================
+india = pytz.timezone("Asia/Kolkata")
+now = datetime.now(india)
+
+# =========================
+# HEADER
+# =========================
+col1, col2 = st.columns([6,2])
+
+with col1:
+    st.markdown("<h1 style='margin-bottom:0;'>📊 Activity Performance Dashboard</h1>", unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"""
+    <div style='text-align:right; font-size:18px;'>
+        🕒 {now.strftime('%d-%m-%Y')} <br>
+        <b>{now.strftime('%I:%M:%S %p')}</b>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
+
+# =========================
+# GOOGLE SHEET CSV LINK
+# =========================
+sheet_url = "https://docs.google.com/spreadsheets/d/1XUAIJX6IzNkxbYCgCj3USfYcpECz6TjrLUZErFVsEo8/export?format=csv"
 
 @st.cache_data(ttl=60)
 def load_data():
@@ -16,76 +43,81 @@ def load_data():
 
 df = load_data()
 
-st.title("📊 Activity Performance Dashboard")
+# =========================
+# DATA CLEANING
+# =========================
+df.columns = df.columns.str.strip()
 
-# ---------- CURRENT DATE TIME ----------
-now = datetime.now()
-st.markdown(f"🕒 {now.strftime('%d-%m-%Y %I:%M:%S %p')}")
-
-# ---------- RESHAPE DATA ----------
-date_columns = df.columns[4:]
+# Melt date columns
+fixed_cols = ["Activity", "Summary", "Target", "Sample"]
+date_cols = [col for col in df.columns if "/" in col]
 
 df_melt = df.melt(
-    id_vars=["Activity", "Summary", "Target", "Sample"],
-    value_vars=date_columns,
+    id_vars=fixed_cols,
+    value_vars=date_cols,
     var_name="Date",
     value_name="Value"
 )
 
-df_melt["Date"] = pd.to_datetime(df_melt["Date"], dayfirst=True, errors="coerce")
+df_melt["Date"] = pd.to_datetime(df_melt["Date"], dayfirst=True)
+df_melt["Value"] = df_melt["Value"].astype(str)
 
-# ---------- SIDEBAR FILTERS ----------
-st.sidebar.header("Filters")
+# =========================
+# SIDEBAR FILTERS
+# =========================
+st.sidebar.header("🔎 Filters")
 
-activity_list = df["Activity"].dropna().unique()
-selected_activity = st.sidebar.selectbox("Select Activity", activity_list)
+activity_list = df_melt["Activity"].dropna().unique().tolist()
+activity = st.sidebar.selectbox("Select Activity", activity_list)
 
-summary_list = df[df["Activity"] == selected_activity]["Summary"].dropna().unique()
-selected_summary = st.sidebar.selectbox("Select Summary", summary_list)
+filtered_summary = df_melt[df_melt["Activity"] == activity]["Summary"].dropna().unique().tolist()
+summary = st.sidebar.selectbox("Select Summary", filtered_summary)
 
 min_date = df_melt["Date"].min()
 max_date = df_melt["Date"].max()
 
-selected_dates = st.sidebar.date_input(
-    "Select Date Range",
-    [min_date, max_date],
-    min_value=min_date,
-    max_value=max_date
-)
+date_range = st.sidebar.date_input("Select Date Range", [min_date, max_date])
 
-# ---------- FILTER DATA ----------
-filtered_df = df_melt[
-    (df_melt["Activity"] == selected_activity) &
-    (df_melt["Summary"] == selected_summary) &
-    (df_melt["Date"] >= pd.to_datetime(selected_dates[0])) &
-    (df_melt["Date"] <= pd.to_datetime(selected_dates[1]))
+# =========================
+# FILTER DATA
+# =========================
+filtered = df_melt[
+    (df_melt["Activity"] == activity) &
+    (df_melt["Summary"] == summary) &
+    (df_melt["Date"] >= pd.to_datetime(date_range[0])) &
+    (df_melt["Date"] <= pd.to_datetime(date_range[1]))
 ]
 
+# =========================
+# SHOW TABLE (FULL WIDTH VALUE COLUMN)
+# =========================
 st.subheader("📋 Filtered Data")
 
-st.dataframe(
-    filtered_df,
-    use_container_width=True,
-    height=500
-)
+if not filtered.empty:
+    st.dataframe(filtered, use_container_width=True)
+else:
+    st.warning("No data available for selected filters.")
 
-# ---------- PIE CHART ----------
-st.subheader("📊 3D Style Pie Chart")
+# =========================
+# 3D STYLE PIE CHART
+# =========================
+st.subheader("📊 3D Pie Chart View")
 
-if not filtered_df.empty:
+if not filtered.empty:
 
-    chart_data = filtered_df.groupby("Date").size().reset_index(name="Count")
+    pie_data = filtered.groupby("Date").size().reset_index(name="Count")
 
     fig = px.pie(
-        chart_data,
-        names="Date",
+        pie_data,
         values="Count",
+        names=pie_data["Date"].dt.strftime("%d-%m-%Y"),
         hole=0.3
     )
 
-    fig.update_traces(textposition="inside", textinfo="percent+label")
+    fig.update_traces(textinfo="percent+label")
+    fig.update_layout(height=500)
 
     st.plotly_chart(fig, use_container_width=True)
 
 else:
-    st.warning("No data available for selected filters.")
+    st.info("No chart data available.")
